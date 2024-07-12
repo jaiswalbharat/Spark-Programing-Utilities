@@ -1,0 +1,15 @@
+import org.apache.spark.sql.SparkSession
+
+class HiveTableValidation(spark: SparkSession) extends Validation {
+  override def isValidTable(tableName: String): Boolean = {
+    // Implement validation logic here
+    val tableExists = spark.catalog.tableExists(tableName)
+    if (tableExists) {
+      val createDate = spark.sql(s"SHOW CREATE TABLE $tableName").first().getString(0)
+      // Add logic to compare createDate with the last run date
+      true
+    } else {
+      false
+    }
+  }
+}
