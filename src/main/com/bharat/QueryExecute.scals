@@ -1,0 +1,3 @@
+trait QueryExecute {
+  def executeQuery(query: String, database: String): DataFrame
+}
