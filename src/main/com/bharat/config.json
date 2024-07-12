@@ -1,0 +1,9 @@
+[
+  {
+    "database": "example_db",
+    "query": "SELECT group_by_column, COUNT(*) as row_count FROM example_db.results WHERE date = '2024-07-12' GROUP BY group_by_column",
+    "group_by_column": "group_by_column",
+    "compare_iteration": 5,
+    "threshold_percentage": 20
+  }
+]
