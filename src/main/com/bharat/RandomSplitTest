@@ -1,0 +1,114 @@
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
+import org.apache.spark.sql.{SparkSession, DataFrame}
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.Row
+
+class DataSplitterTest extends FunSuite with BeforeAndAfterAll {
+
+  var spark: SparkSession = _
+  var testData: DataFrame = _
+
+  override def beforeAll(): Unit = {
+    // Initialize SparkSession
+    spark = SparkSession.builder()
+      .master("local[*]")
+      .appName("DataSplitterTest")
+      .getOrCreate()
+
+    // Create a test DataFrame
+    import spark.implicits._
+    testData = Seq(
+      ("A", 1), ("A", 2), ("A", 3), ("A", 4), ("A", 5),
+      ("B", 6), ("B", 7), ("B", 8), ("B", 9), ("B", 10)
+    ).toDF("pollution", "value")
+  }
+
+  override def afterAll(): Unit = {
+    spark.stop()
+  }
+
+  test("sampleData should return the correct number of Type A and Type B samples") {
+    val dataSplitter = DataSplitter(spark)
+    
+    val sampledData = dataSplitter.sampleData(
+      testData,
+      sampleSize = 8,         // We want a sample of 8 rows
+      typeARatio = 0.7,       // Type A should be 70% of the sample
+      typeBRatio = 0.3        // Type B should be 30% of the sample
+    )
+
+    assert(sampledData.count() == 8)
+    assert(sampledData.filter($"pollution" === "A").count() == 5) // 5 out of 8 should be A
+    assert(sampledData.filter($"pollution" === "B").count() == 3) // 3 out of 8 should be B
+  }
+
+  test("splitDataWithTypeRatio should maintain the ratio of Type A and Type B") {
+    val dataSplitter = DataSplitter(spark)
+
+    // Sample the data first (assume we've already sampled the data)
+    val sampledData = dataSplitter.sampleData(
+      testData,
+      sampleSize = 10,         // Total sample size (using full data for simplicity)
+      typeARatio = 0.7,
+      typeBRatio = 0.3
+    )
+
+    val (trainData, testData, validationData) = dataSplitter.splitDataWithTypeRatio(
+      sampledData,
+      trainRatio = 0.6,
+      testRatio = 0.2,
+      validationRatio = 0.2,
+      typeARatio = 0.7,
+      typeBRatio = 0.3
+    )
+
+    // Check train set
+    assert(trainData.count() == 6) // 60% of 10 is 6
+    assert(trainData.filter($"pollution" === "A").count() == 4) // 70% of 6 is ~4.2, rounds to 4
+    assert(trainData.filter($"pollution" === "B").count() == 2) // 30% of 6 is ~1.8, rounds to 2
+
+    // Check test set
+    assert(testData.count() == 2) // 20% of 10 is 2
+    assert(testData.filter($"pollution" === "A").count() == 1) // 70% of 2 is 1.4, rounds to 1
+    assert(testData.filter($"pollution" === "B").count() == 1) // 30% of 2 is 0.6, rounds to 1
+
+    // Check validation set
+    assert(validationData.count() == 2) // 20% of 10 is 2
+    assert(validationData.filter($"pollution" === "A").count() == 1) // 70% of 2 is 1.4, rounds to 1
+    assert(validationData.filter($"pollution" === "B").count() == 1) // 30% of 2 is 0.6, rounds to 1
+  }
+
+  test("process should return three datasets with correct sizes and ratios") {
+    val dataSplitter = DataSplitter(spark)
+
+    val config = Map(
+      "sampleSize" -> 10.0,   // Sample 10 rows for testing
+      "sampleTypeARatio" -> 0.7,
+      "sampleTypeBRatio" -> 0.3,
+      "trainRatio" -> 0.6,
+      "testRatio" -> 0.2,
+      "validationRatio" -> 0.2,
+      "splitTypeARatio" -> 0.7,
+      "splitTypeBRatio" -> 0.3
+    )
+
+    val (trainData, testData, validationData) = dataSplitter.process(testData, config)
+
+    // Check overall sizes
+    assert(trainData.count() == 6)   // 60% of 10
+    assert(testData.count() == 2)    // 20% of 10
+    assert(validationData.count() == 2) // 20% of 10
+
+    // Check ratios in train data
+    assert(trainData.filter($"pollution" === "A").count() == 4)
+    assert(trainData.filter($"pollution" === "B").count() == 2)
+
+    // Check ratios in test data
+    assert(testData.filter($"pollution" === "A").count() == 1)
+    assert(testData.filter($"pollution" === "B").count() == 1)
+
+    // Check ratios in validation data
+    assert(validationData.filter($"pollution" === "A").count() == 1)
+    assert(validationData.filter($"pollution" === "B").count() == 1)
+  }
+}
